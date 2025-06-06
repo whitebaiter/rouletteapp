@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>カスタムルーレット（修正版）</title>
+    <style>
+        /* CSS: 見た目を整える */
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 20px;
+            background-color: #f4f4f4;
+            gap: 40px; /* 全体の間隔 */
+        }
+        .main-container {
+            display: flex;
+            gap: 40px;
+            align-items: flex-start;
+        }
+
+        /* ========== ▼ここから修正・変更箇所▼ ========== */
+
+        .roulette-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px; /* ルーレットとボタンの間隔 */
+        }
+        .roulette-container {
+            position: relative;
+            width: 400px;
+            height: 400px;
+        }
+        canvas {
+            /* canvas自体の回転アニメーション */
+            transition: transform 5s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        #spin-button {
+            /* ボタンをルーレットの下に配置 */
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            border: none;
+            background-color: #3498db;
+            color: white;
+            box-shadow: 0 4px #2980b9;
+            transition: all 0.1s ease-in-out;
+        }
+        #spin-button:hover {
+            background-color: #3ca9fc;
+        }
+        #spin-button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px #2980b9;
+        }
+        #spin-button:disabled {
+            cursor: not-allowed;
+            background-color: #bdc3c7;
+            box-shadow: 0 4px #95a5a6;
+        }
+        .pointer {
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 30px solid #c0392b; /* 赤い矢印 */
+            position: absolute;
+            top: -10px; /* 位置を微調整 */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10; /* canvasより手前に表示 */
+        }
+
+        /* ========== ▲ここまで修正・変更箇所▲ ========== */
+
+        .options-container {
+            width: 300px;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            text-align: center;
+        }
+        #options-list {
+            list-style: none;
+            padding: 0;
+            max-height: 300px; /* リストが多くなったらスクロール */
+            overflow-y: auto;
+        }
+        #options-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        .delete-btn {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #add-option-form {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        #new-option-input {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        #add-option-button {
+            padding: 8px 15px;
+            border: none;
+            background-color: #3498db;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="options-container">
+        <h2>選択肢リスト</h2>
+        <ul id="options-list"></ul>
+        <form id="add-option-form">
+            <input type="text" id="new-option-input" placeholder="新しい選択肢を追加">
+            <button type="submit" id="add-option-button">追加</button>
+        </form>
+    </div>
+    
+    <div class="roulette-area">
+        <h1>運試しルーレット</h1>
+        <div class="roulette-container">
+            <div class="pointer"></div>
+            <canvas id="roulette-canvas" width="400" height="400"></canvas>
+        </div>
+        <button id="spin-button">SPIN!</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('roulette-canvas');
+        const ctx = canvas.getContext('2d');
+        const spinButton = document.getElementById('spin-button');
+        const optionsList = document.getElementById('options-list');
+        const addOptionForm = document.getElementById('add-option-form');
+        const newOptionInput = document.getElementById('new-option-input');
+
+        let options = ['ラーメン', 'カレー', '寿司', 'パスタ', '焼肉', 'うどん'];
+        const colors = ['#f1c40f', '#e67e22', '#e74c3c', '#9b59b6', '#3498db', '#1abc9c', '#2ecc71'];
+
+        let currentAngle = 0;
+        let isSpinning = false;
+
+        function render() {
+            optionsList.innerHTML = '';
+            options.forEach((option, index) => {
+                const li = document.createElement('li');
+                li.textContent = option;
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = '削除';
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.onclick = () => {
+                    options.splice(index, 1);
+                    render();
+                };
+                li.appendChild(deleteBtn);
+                optionsList.appendChild(li);
+            });
+            drawRoulette();
+        }
+        
+        function drawRoulette() {
+            const numOptions = options.length;
+            if (numOptions === 0) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.beginPath();
+                ctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 2 - 5, 0, 2 * Math.PI);
+                ctx.fillStyle = '#ccc';
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = '20px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('選択肢を追加', canvas.width / 2, canvas.height / 2);
+                return;
+            };
+            
+            const arcSize = 2 * Math.PI / numOptions;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+
+            for (let i = 0; i < numOptions; i++) {
+                const angle = i * arcSize;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.arc(0, 0, canvas.width / 2, angle, angle + arcSize);
+                ctx.closePath();
+                ctx.fillStyle = colors[i % colors.length];
+                ctx.fill();
+
+                ctx.save();
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const textAngle = angle + arcSize / 2;
+                ctx.rotate(textAngle);
+                ctx.fillText(options[i], canvas.width / 4, 0);
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+
+        spinButton.addEventListener('click', () => {
+            if (isSpinning || options.length < 2) return;
+
+            isSpinning = true;
+            spinButton.disabled = true;
+
+            const randomSpins = Math.floor(Math.random() * 5 + 5);
+            const randomStopAngle = Math.random() * 360;
+            const totalRotation = randomSpins * 360 + randomStopAngle;
+
+            currentAngle += totalRotation;
+            canvas.style.transform = `rotate(${currentAngle}deg)`;
+
+            setTimeout(() => {
+                const finalAngle = currentAngle % 360;
+                const arcSizeDegrees = 360 / options.length;
+                const winningIndex = Math.floor(((360 - finalAngle + 270) % 360) / arcSizeDegrees);
+
+                alert(`結果は「${options[winningIndex]}」です！`);
+
+                isSpinning = false;
+                spinButton.disabled = false;
+            }, 5000);
+        });
+
+        addOptionForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newOption = newOptionInput.value.trim();
+            if (newOption) {
+                options.push(newOption);
+                newOptionInput.value = '';
+                render();
+            }
+        });
+
+        render();
+    </script>
+</body>
+</html>
